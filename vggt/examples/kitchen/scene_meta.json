@@ -1,0 +1,29 @@
+{
+  "scene_name": "kitchen",
+  "num_frames": 5,
+  "frame_list": [
+    "frame_000",
+    "frame_001",
+    "frame_002",
+    "frame_003",
+    "frame_004"
+  ],
+  "image_size": [
+    518,
+    518
+  ],
+  "vggt_resolution": 518,
+  "coordinate_normalization": {
+    "world_frame": "first_frame",
+    "depth_scale": "normalized",
+    "coordinate_system": "OpenCV"
+  },
+  "fusion_strategy": "multiplicative",
+  "fusion_weights": {
+    "uncertainty": 0.5,
+    "visibility": 0.3,
+    "consistency": 0.2
+  },
+  "has_tracks": true,
+  "has_visibility": true
+}

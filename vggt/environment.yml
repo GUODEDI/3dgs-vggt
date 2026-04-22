@@ -1,0 +1,36 @@
+name: vggt
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+    # 核心依赖（来自 requirements.txt）
+    - torch==2.3.1
+    - torchvision==0.18.1
+    - numpy==1.26.1
+    - Pillow
+    - huggingface_hub
+    - einops
+    - safetensors
+    # 演示依赖（来自 requirements_demo.txt）
+    - gradio==5.17.1
+    - viser==0.2.23
+    - tqdm
+    - hydra-core
+    - omegaconf
+    - opencv-python
+    - scipy
+    - onnxruntime
+    - requests
+    - trimesh
+    - matplotlib
+    - pydantic==2.10.6
+    # COLMAP 导出依赖（可选，如果安装失败可以跳过）
+    - pycolmap==3.10.0
+    - pyceres==2.3
+    # LightGlue（用于 bundle adjustment，可选）
+    # 注意：如果 git+https 安装失败，可以稍后手动安装
+    # - git+https://github.com/jytime/LightGlue.git#egg=lightglue
