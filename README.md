@@ -122,3 +122,4 @@ pip install --no-build-isolation gaussian-splatting-main/submodules/fused-ssim
 ## License
 
 Research and educational use only. See submodule LICENSE files for third-party terms.
+
