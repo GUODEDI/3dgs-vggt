@@ -2,6 +2,9 @@
 # Files to exclude from git
 # ============================================
 
+# Markdown (local notes only, not on GitHub)
+*.md
+
 # Papers / office documents (not uploaded)
 *.pdf
 *.docx
