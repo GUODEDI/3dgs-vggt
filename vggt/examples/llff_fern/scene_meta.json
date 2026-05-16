@@ -1,12 +1,15 @@
 {
   "scene_name": "llff_fern",
-  "num_frames": 5,
+  "num_frames": 8,
   "frame_list": [
     "frame_000",
     "frame_001",
     "frame_002",
     "frame_003",
-    "frame_004"
+    "frame_004",
+    "frame_005",
+    "frame_006",
+    "frame_007"
   ],
   "image_size": [
     518,

@@ -164,17 +164,28 @@ def compute_w_appear_for_frame(ref_idx, frames, step=4):
     color_stack = np.stack(all_colors, axis=2)  # [h, w, N, 3]
     color_var = np.var(color_stack, axis=2).mean(axis=-1)  # [h, w] RGB方差取平均
 
-    # 只在有效投影数 >= 2 时才有意义
-    color_var[valid_count < 2] = 0
+    # Bug 4 修复：区分"无有效投影"和"颜色一致"两种情况
+    # 无有效投影（valid_count < 2）:无法判断,标记为 invalid_mask,后续设为 W_appear = 1.0
+    # 颜色一致(色彩方差为 0):说明真正朗伯面,正常归一化为 W_appear ≈ 1.0
+    invalid_mask = valid_count < 2
 
     # 归一化方差到 0-1 (用 percentile 避免离群值)
-    p95 = np.percentile(color_var[color_var > 0], 95) if (color_var > 0).any() else 1.0
+    # 仅基于有效像素的非零方差计算 p95,避免无效像素的 0 干扰统计
+    valid_var = color_var[(~invalid_mask) & (color_var > 0)]
+    if valid_var.size > 0:
+        p95 = np.percentile(valid_var, 95)
+    else:
+        # 全场景均为朗伯面/无效:归一化系数取 1.0,但保证不会让所有像素一致
+        p95 = 1.0
     p95 = max(p95, 1e-6)
     var_normalized = np.clip(color_var / p95, 0, 1)
 
     # W_appear = 1 - normalized_variance
-    # 方差大 = 视角依赖 = 3DGS难 = W_appear低
+    # 方差大 = 视角依赖 = 3DGS 难 = W_appear 低
     w_appear_down = 1.0 - var_normalized
+
+    # 无效投影区域: 不参与计算, 保持 W_appear = 1.0(不降权)
+    w_appear_down[invalid_mask] = 1.0
 
     # 上采样到原始分辨率
     w_appear = cv2.resize(w_appear_down.astype(np.float32), (W, H),

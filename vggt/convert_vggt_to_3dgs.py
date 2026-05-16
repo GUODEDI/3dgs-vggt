@@ -111,14 +111,15 @@ def convert_depth_npy_to_png(depth_npy_path, depth_png_path, scale_factor=65535.
     return depth_min, depth_max
 
 
-def convert_vggt_to_colmap(vggt_dir, output_dir, scene_name="scene"):
+def convert_vggt_to_colmap(vggt_dir, output_dir, scene_name="scene", test_indices=None):
     """
     将 VGGT 导出的数据转换为 COLMAP 格式
-    
+
     Args:
         vggt_dir: VGGT 输出目录（包含 frame_XXX.json 和 frame_XXX_depth.npy）
         output_dir: 输出目录（3DGS 场景目录）
         scene_name: 场景名称
+        test_indices: 测试集帧索引列表（如 [4] 表示第5帧为测试集）。None 表示不划分。
     """
     vggt_dir = Path(vggt_dir)
     output_dir = Path(output_dir)
@@ -353,6 +354,30 @@ def convert_vggt_to_colmap(vggt_dir, output_dir, scene_name="scene"):
             json.dump(depth_params, f, indent=2)
         print(f"[OK] Depth params saved: {sparse_dir / 'depth_params.json'}")
 
+    # 写入 test.txt（train/test split）
+    if test_indices is not None:
+        num_frames = len(frame_files)
+        # 处理 LLFF hold 情况
+        if isinstance(test_indices, tuple) and test_indices[0] == "llffhold":
+            hold = test_indices[1]
+            actual_test_indices = list(range(0, num_frames, hold))
+        else:
+            actual_test_indices = [i for i in test_indices if 0 <= i < num_frames]
+
+        # 收集对应的图像名（不带扩展名）
+        test_names = []
+        for idx in actual_test_indices:
+            with open(frame_files[idx], 'r') as f:
+                fdata = json.load(f)
+            name_with_ext = os.path.basename(fdata["original_image_path"])
+            test_names.append(name_with_ext)
+
+        with open(sparse_dir / "test.txt", 'w') as f:
+            for name in test_names:
+                f.write(name + "\n")
+        print(f"[OK] Test split saved: {len(test_names)} test frames -> {sparse_dir / 'test.txt'}")
+        print(f"     Test images: {test_names}")
+
     print(f"\n[OK] Conversion done!")
     print(f"  输出目录: {output_dir}")
     print(f"  COLMAP 文件: {sparse_dir}")
@@ -366,15 +391,26 @@ def convert_vggt_to_colmap(vggt_dir, output_dir, scene_name="scene"):
 
 if __name__ == "__main__":
     import argparse
-    
+
     parser = argparse.ArgumentParser(description="将 VGGT 导出的数据转换为 3DGS 可用的 COLMAP 格式")
-    parser.add_argument("--vggt_dir", type=str, required=True, 
+    parser.add_argument("--vggt_dir", type=str, required=True,
                        help="VGGT 输出目录（包含 frame_XXX.json 和 frame_XXX_depth.npy）")
     parser.add_argument("--output_dir", type=str, required=True,
                        help="3DGS 场景输出目录")
     parser.add_argument("--scene_name", type=str, default="scene",
                        help="场景名称")
-    
+    parser.add_argument("--test_indices", type=str, default="",
+                       help="测试集帧索引，逗号分隔（如 '4' 或 '0,4,7'）。空表示不划分。")
+    parser.add_argument("--llffhold", type=int, default=0,
+                       help="LLFF 风格的测试集划分：每 N 张图取 1 张做测试（如 8）。0 表示不划分。")
+
     args = parser.parse_args()
-    
-    convert_vggt_to_colmap(args.vggt_dir, args.output_dir, args.scene_name)
+
+    test_indices = None
+    if args.test_indices:
+        test_indices = [int(x) for x in args.test_indices.split(",") if x.strip()]
+    elif args.llffhold > 0:
+        # 占位：实际索引在 convert 函数里根据帧数生成
+        test_indices = ("llffhold", args.llffhold)
+
+    convert_vggt_to_colmap(args.vggt_dir, args.output_dir, args.scene_name, test_indices=test_indices)

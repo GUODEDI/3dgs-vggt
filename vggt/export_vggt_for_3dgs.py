@@ -37,9 +37,19 @@ from vggt.dependency.projection import project_3D_points_np
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="VGGT → 3DGS 数据导出工具（简化版：固定5张图片，GPU）")
+    parser = argparse.ArgumentParser(description="VGGT → 3DGS 数据导出工具（GPU）")
     parser.add_argument("--scene_dir", type=str, required=True, help="场景目录（包含 images/ 子目录）")
     parser.add_argument("--output_dir", type=str, default=None, help="输出目录（默认：scene_dir）")
+    parser.add_argument("--num_frames", type=int, default=8, help="处理的帧数（默认 8，受 GPU 显存限制）")
+
+    # W_geo 权重图融合参数（修士论文需要做消融实验）
+    parser.add_argument("--w_sigma", type=float, default=0.5, help="W_geo 中深度可靠性分量权重（默认 0.5）")
+    parser.add_argument("--w_vis", type=float, default=0.3, help="W_geo 中可见性分量权重（默认 0.3）")
+    parser.add_argument("--w_cons", type=float, default=0.2, help="W_geo 中一致性分量权重（默认 0.2）")
+    parser.add_argument("--w_strategy", type=str, default="weighted_avg",
+                        choices=["multiplicative", "weighted_avg"],
+                        help="W_geo 融合策略（默认 weighted_avg）")
+    parser.add_argument("--w_min", type=float, default=0.1, help="W_geo 最小裁剪阈值（默认 0.1）")
     return parser.parse_args()
 
 
@@ -413,7 +423,7 @@ def compute_weight_map(sigma_reliability, vis_reliability, consistency_reliabili
         W: [H, W] 权重图（0-1）
     """
     if consistency_reliability is None:
-        # 如果没有一致性，只使用不确定度和可见性
+        # 只使用不确定度和可见性（轨迹缺失的降级情况）
         if strategy == "multiplicative":
             W = (sigma_reliability ** w_sigma) * (vis_reliability ** w_vis)
         else:  # weighted_avg
@@ -423,8 +433,12 @@ def compute_weight_map(sigma_reliability, vis_reliability, consistency_reliabili
         if strategy == "multiplicative":
             W = (sigma_reliability ** w_sigma) * (vis_reliability ** w_vis) * (consistency_reliability ** w_cons)
         else:  # weighted_avg
-            W = w_sigma * sigma_reliability + w_vis * vis_reliability + w_cons * consistency_reliability
-    
+            # 修复：归一化系数，避免用户传入非和为 1 的系数时输出 > 1
+            total_weight = w_sigma + w_vis + w_cons
+            W = ((w_sigma / total_weight) * sigma_reliability
+                 + (w_vis / total_weight) * vis_reliability
+                 + (w_cons / total_weight) * consistency_reliability)
+
     # 最小阈值裁剪
     W = np.maximum(W, min_weight)
     W = np.clip(W, 0.0, 1.0)
@@ -716,11 +730,14 @@ def main():
     if len(image_paths) == 0:
         raise ValueError(f"在 {image_dir} 中未找到图片文件")
     
-    # 固定处理5张图片
-    MAX_FRAMES = 5
-    image_paths = image_paths[:MAX_FRAMES]
-    
-    print(f"处理 {len(image_paths)} 张图片（固定5张）")
+    # 处理指定帧数（默认 8）
+    MAX_FRAMES = args.num_frames
+    if len(image_paths) > MAX_FRAMES:
+        # 等距采样，覆盖整个序列
+        indices = np.linspace(0, len(image_paths) - 1, MAX_FRAMES).astype(int)
+        image_paths = [image_paths[i] for i in indices]
+
+    print(f"处理 {len(image_paths)} 张图片")
     
     # 加载图像（降低分辨率以节省显存）
     print("加载图像...")
@@ -852,7 +869,21 @@ def main():
     # 创建输出目录
     vggt_output_dir = os.path.join(args.output_dir, "vggt")
     os.makedirs(vggt_output_dir, exist_ok=True)
-    
+
+    # 保存 W_geo 配置信息（用于消融实验追溯）
+    wgeo_config = {
+        "w_sigma": args.w_sigma,
+        "w_vis": args.w_vis,
+        "w_cons": args.w_cons,
+        "strategy": args.w_strategy,
+        "min_weight": args.w_min,
+        "num_frames": args.num_frames,
+    }
+    import json as _json
+    with open(os.path.join(vggt_output_dir, "wgeo_config.json"), 'w') as f:
+        _json.dump(wgeo_config, f, indent=2)
+    print(f"[OK] W_geo config saved: {wgeo_config}")
+
     # 处理每一帧
     S = depth_map.shape[0]
     frame_list = []
@@ -904,11 +935,11 @@ def main():
         vis_reliability = percentile_normalize(vis)  # 可见性归一化
         consistency_reliability = percentile_normalize(consistency) if consistency is not None else None
         
-        # 计算权重图（加权平均策略，避免乘法导致值崩塌）
+        # 计算权重图（参数从命令行传入，支持消融实验）
         W = compute_weight_map(
             sigma_reliability, vis_reliability, consistency_reliability,
-            w_sigma=0.5, w_vis=0.3, w_cons=0.2,
-            strategy="weighted_avg", min_weight=0.1
+            w_sigma=args.w_sigma, w_vis=args.w_vis, w_cons=args.w_cons,
+            strategy=args.w_strategy, min_weight=args.w_min
         )
         
         # 保存数据
@@ -928,7 +959,11 @@ def main():
         
         # 4. 可见性 NPY
         np.save(os.path.join(vggt_output_dir, f"{frame_name}_vis.npy"), vis)
-        
+
+        # 4b. 一致性 NPY（保存以支持 W_geo 系数消融实验，无需重跑 VGGT）
+        if consistency is not None:
+            np.save(os.path.join(vggt_output_dir, f"{frame_name}_cons.npy"), consistency)
+
         # 5. 权重图 NPY
         np.save(os.path.join(vggt_output_dir, f"{frame_name}_W.npy"), W)
         

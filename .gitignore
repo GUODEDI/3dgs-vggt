@@ -2,9 +2,30 @@
 # Files to exclude from git
 # ============================================
 
-# Reports / speech drafts / PPT notes (not uploaded)
-*.md
-!README.md
+# Papers / office documents (not uploaded)
+*.pdf
+*.docx
+*.pptx
+
+# Local comparison renders (GitHub demo image kept under results/)
+comparison_visuals/
+comparison_visuals_*/
+comparison_visuals_full/
+渲染对比/
+*.png
+!results/*.png
+!gaussian-splatting-main/assets/**
+
+# Prebuilt viewers (binaries)
+viewers/
+
+# Temp extraction outputs
+_fit*.txt
+_tagawa*.txt
+_ppt_extract*.txt
+_styles_out.txt
+_template_paras.txt
+_fitpaper*.txt
 
 # Training outputs (usually GB-sized)
 output/
